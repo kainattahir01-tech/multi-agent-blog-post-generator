@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+google-antigravity
+google-genai
+python-multipart
+python-dotenv

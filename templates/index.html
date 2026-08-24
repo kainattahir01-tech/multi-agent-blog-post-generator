@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Agent Blog Post Generator</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/styles.css">
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <!-- Top Animated Progress Bar -->
+    <div id="top-progress-bar" class="top-progress-bar"></div>
+
+    <div class="app-background">
+        <div class="glow-orb" id="orb-1"></div>
+        <div class="glow-orb" id="orb-2"></div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <i class="fa-solid fa-brain-circuit title-icon"></i>
+                <div>
+                    <h1>BlogAgent <span>Pipeline</span></h1>
+                    <p>Collaborative multi-agent blog writer powered by Gemini</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Layout -->
+        <main class="app-grid">
+            <!-- 1. Full-width Configuration Card -->
+            <div class="glass-card config-card">
+                <h2><i class="fa-solid fa-sliders"></i> Configuration</h2>
+                <form id="generator-form">
+                    <div class="input-group">
+                        <label for="topic">Blog Topic / Prompt</label>
+                        <textarea id="topic" placeholder="e.g., The Future of Quantum Computing in Everyday Devices" required></textarea>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="tone">Tone of Voice</label>
+                        <select id="tone">
+                            <option value="professional" selected>Professional</option>
+                            <option value="creative">Creative / Storytelling</option>
+                            <option value="casual">Casual & Conversational</option>
+                            <option value="humorous">witty & Humorous</option>
+                            <option value="educational">Educational & Informative</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="length">Target Length</label>
+                        <select id="length">
+                            <option value="short">Short (~500 words)</option>
+                            <option value="medium" selected>Medium (~1000 words)</option>
+                            <option value="long">Long (~1500 words)</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="language">Language</label>
+                        <select id="language">
+                            <option value="English" selected>English</option>
+                            <option value="Urdu">Urdu</option>
+                            <option value="Arabic">Arabic</option>
+                            <option value="French">French</option>
+                            <option value="Spanish">Spanish</option>
+                            <option value="German">German</option>
+                            <option value="Italian">Italian</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="api-key">
+                            Gemini API Key <span class="label-hint">(Optional)</span>
+                        </label>
+                        <div class="api-key-container">
+                            <input type="password" id="api-key" placeholder="Enter key...">
+                            <button type="button" id="toggle-key-visibility" class="icon-btn">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="input-group button-group">
+                        <label class="btn-label-shim">&nbsp;</label>
+                        <button type="submit" id="generate-btn" class="glow-button">
+                            <span><i class="fa-solid fa-rocket"></i> Launch Pipeline</span>
+                        </button>
+                    </div>
+                </form>
+                <!-- Collapsible Settings Panel -->
+                <div class="settings-collapsible">
+                    <button type="button" class="settings-toggle-btn" id="settings-toggle">
+                        <i class="fa-solid fa-gear"></i> Settings
+                    </button>
+                    <div class="settings-content" id="settings-content" style="display: none;">
+                        <div class="settings-grid">
+                            <!-- Theme Selector -->
+                            <div class="setting-item">
+                                <label>Theme Mode</label>
+                                <div class="theme-options">
+                                    <button type="button" class="theme-btn" data-theme="dark"><i class="fa-solid fa-moon"></i> Dark</button>
+                                    <button type="button" class="theme-btn" data-theme="light"><i class="fa-solid fa-sun"></i> Light</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Font Size Selector -->
+                            <div class="setting-item">
+                                <label for="pref-font-size">Font Size</label>
+                                <select id="pref-font-size">
+                                    <option value="small">Small (14px)</option>
+                                    <option value="medium" selected>Medium (16px)</option>
+                                    <option value="large">Large (18px)</option>
+                                </select>
+                            </div>
+
+                            <!-- Accent Color Picker -->
+                            <div class="setting-item">
+                                <label>Accent Color</label>
+                                <div class="color-swatches">
+                                    <button type="button" class="color-swatch" data-color="#6d28d9" style="background-color: #6d28d9;" title="Dark Purple"></button>
+                                    <button type="button" class="color-swatch" data-color="#1e40af" style="background-color: #1e40af;" title="Midnight Blue"></button>
+                                    <button type="button" class="color-swatch" data-color="#065f46" style="background-color: #065f46;" title="Forest Green"></button>
+                                    <button type="button" class="color-swatch" data-color="#be185d" style="background-color: #be185d;" title="Rose Pink"></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Prompt History (moved inside Settings) -->
+                        <div class="settings-history-section" id="history-section" style="display: none;">
+                            <label>Prompt History (<span id="history-count">0</span>)</label>
+                            <div id="history-list" class="history-list"></div>
+                            <button type="button" id="clear-history-btn" class="clear-history-btn">
+                                <i class="fa-solid fa-trash-can"></i> Clear History
+                            </button>
+                        </div>
+
+                        <!-- Reset to defaults -->
+                        <div class="settings-reset-row">
+                            <button type="button" id="settings-reset-btn" class="settings-reset-btn">
+                                <i class="fa-solid fa-arrow-rotate-left"></i> Reset to Default
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Full-width Horizontal Agents Card -->
+            <div class="glass-card status-card">
+                <h2><i class="fa-solid fa-route"></i> Sequential Agents</h2>
+                <div class="agent-timeline">
+                    <!-- Research Agent Step -->
+                    <div class="timeline-step" id="step-research">
+                        <div class="step-badge">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </div>
+                        <div class="step-content">
+                            <h3>Research Agent</h3>
+                            <p class="step-desc">Gathers facts, statistics, and structures outline</p>
+                            <span class="step-status status-idle">Idle</span>
+                        </div>
+                    </div>
+                    <!-- Writing Agent Step -->
+                    <div class="timeline-step" id="step-writer">
+                        <div class="step-badge">
+                            <i class="fa-solid fa-pen-nib"></i>
+                        </div>
+                        <div class="step-content">
+                            <h3>Writing Agent</h3>
+                            <p class="step-desc">Drafts blog post based on research brief</p>
+                            <span class="step-status status-idle">Idle</span>
+                        </div>
+                    </div>
+                    <!-- Editing Agent Step -->
+                    <div class="timeline-step" id="step-editor">
+                        <div class="step-badge">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        </div>
+                        <div class="step-content">
+                            <h3>Editing Agent</h3>
+                            <p class="step-desc">Polishes formatting, readability, and sentence flow</p>
+                            <span class="step-status status-idle">Idle</span>
+                        </div>
+                    </div>
+                    <!-- SEO Agent Step -->
+                    <div class="timeline-step" id="step-seo">
+                        <div class="step-badge">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                        <div class="step-content">
+                            <h3>SEO Agent</h3>
+                            <p class="step-desc">Generates keywords, metadata, and optimization tips</p>
+                            <span class="step-status status-idle">Idle</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pipeline Action Console -->
+                <div class="console-box">
+                    <div class="console-header">
+                        <span>Pipeline Logs</span>
+                        <span class="pulse-dot"></span>
+                    </div>
+                    <div class="console-output" id="console-logs">
+                        System ready. Enter topic and launch pipeline...
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Full-width Output Tabs Card -->
+            <div class="glass-card output-card">
+                <div class="tabs-header">
+                    <button class="tab-btn active" data-tab="tab-research">
+                        <i class="fa-solid fa-magnifying-glass"></i> Research Brief
+                    </button>
+                    <button class="tab-btn" data-tab="tab-writer">
+                        <i class="fa-solid fa-pen-nib"></i> First Draft
+                    </button>
+                    <button class="tab-btn" data-tab="tab-editor">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Polished Post
+                    </button>
+                    <button class="tab-btn" data-tab="tab-seo">
+                        <i class="fa-solid fa-chart-line"></i> SEO Report
+                    </button>
+                </div>
+
+                <!-- Live stats info bar -->
+                <div class="output-info-bar" id="output-info-bar">
+                    <div class="info-item"><i class="fa-solid fa-file-word"></i> Words: <span id="info-word-count">0</span></div>
+                    <div class="info-item"><i class="fa-solid fa-clock"></i> Reading Time: <span id="info-reading-time">0 min</span></div>
+                    <div class="info-item"><i class="fa-solid fa-hourglass-half"></i> Duration: <span id="info-agent-time">0s</span></div>
+                </div>
+
+                <div class="tabs-content">
+                    <!-- Research Tab -->
+                    <div class="tab-pane active" id="tab-research">
+                        <div class="tab-pane-header">
+                            <span>Output from Research Agent</span>
+                            <div class="tab-header-right">
+                                <span class="badge badge-info">Bullet Points</span>
+                                <button type="button" class="copy-tab-btn glass-btn" data-target="research-output" style="display: none;"><i class="fa-solid fa-copy"></i> Copy</button>
+                            </div>
+                        </div>
+                        <div class="output-content markdown-body" id="research-output">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <p>No research gathered yet. Launch the pipeline to begin.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Writer Tab -->
+                    <div class="tab-pane" id="tab-writer">
+                        <div class="tab-pane-header">
+                            <span>Output from Writing Agent</span>
+                            <div class="tab-header-right">
+                                <span class="badge badge-warning">First Draft</span>
+                                <button type="button" class="copy-tab-btn glass-btn" data-target="writer-output" style="display: none;"><i class="fa-solid fa-copy"></i> Copy</button>
+                            </div>
+                        </div>
+                        <div class="output-content markdown-body" id="writer-output">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <p>No draft generated yet. Waiting for research phase.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Editor Tab -->
+                    <div class="tab-pane" id="tab-editor">
+                        <div class="tab-pane-header">
+                            <span>Output from Editing Agent</span>
+                            <div class="editor-actions">
+                                <button type="button" id="toggle-raw" class="text-btn" style="display: none;">
+                                    <i class="fa-solid fa-code"></i> Show Raw MD
+                                </button>
+                                <button type="button" id="copy-btn" class="glass-btn" style="display: none;">
+                                    <i class="fa-solid fa-copy"></i> Copy Markdown
+                                </button>
+                                <button type="button" id="pdf-btn" class="glass-btn" style="display: none;">
+                                    <i class="fa-solid fa-file-pdf"></i> Download PDF
+                                </button>
+                                <button type="button" id="html-btn" class="glass-btn" style="display: none;">
+                                    <i class="fa-solid fa-file-code"></i> Export HTML
+                                </button>
+                            </div>
+                        </div>
+                        <div class="output-content markdown-body print-only" id="editor-output">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <p>No polished content yet. Waiting for drafting phase.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEO Tab -->
+                    <div class="tab-pane" id="tab-seo">
+                        <div class="tab-pane-header">
+                            <span>Output from SEO Agent</span>
+                            <div class="tab-header-right">
+                                <span class="badge badge-success">SEO Report</span>
+                                <button type="button" class="copy-tab-btn glass-btn" data-target="seo-output" style="display: none;"><i class="fa-solid fa-copy"></i> Copy</button>
+                            </div>
+                        </div>
+                        <div class="output-content markdown-body" id="seo-output">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <p>No SEO report yet. Waiting for editing phase.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+
+    <!-- Custom Script -->
+    <script src="/static/script.js"></script>
+</body>
+</html>
