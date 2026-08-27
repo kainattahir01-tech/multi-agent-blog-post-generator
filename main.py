@@ -232,49 +232,45 @@ async def run_agent_pipeline(
 
     try:
         client = genai.Client(api_key=api_key)
-        # Use gemini-2.5-flash as default model
-        model_name = "gemini-2.5-flash"
+        # Use gemini-3.6-flash as default model
+        model_name = "gemini-3.6-flash"
     except Exception as e:
         yield f"data: {json.dumps({'event': 'error', 'message': f'Failed to initialize Gemini Client: {str(e)}'})}\n\n"
         return
 
     research_output = ""
-    draft_output = ""
-    final_output = ""
-
-    # ==========================================
-    # 1. RESEARCH AGENT
-    # ==========================================
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'start', 'message': 'Research Agent: Analyzing topic and gathering key points...'})}\n\n"
-    await asyncio.sleep(0.5)
-
-    try:
-        # Prompt for Research Agent
-        research_prompt = f"Conduct comprehensive research and compile key facts, statistics, and subtopics for the topic: '{topic}'."
-        
-        response_stream = client.models.generate_content_stream(
-            model=model_name,
-            contents=research_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=RESEARCH_AGENT_INSTRUCTIONS,
-                temperature=0.4
+    for attempt in range(4):
+        try:
+            # Prompt for Research Agent
+            research_prompt = f"Conduct comprehensive research and compile key facts, statistics, and subtopics for the topic: '{topic}'."
+            
+            response_stream = client.models.generate_content_stream(
+                model=model_name,
+                contents=research_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=RESEARCH_AGENT_INSTRUCTIONS,
+                    temperature=0.4
+                )
             )
-        )
 
-        for chunk in response_stream:
-            text = chunk.text or ""
-            research_output += text
-            yield f"data: {json.dumps({'event': 'content', 'agent': 'research', 'text': text})}\n\n"
-            await asyncio.sleep(0.01) # Small sleep to yield execution and simulate real-time stream
+            for chunk in response_stream:
+                text = chunk.text or ""
+                research_output += text
+                yield f"data: {json.dumps({'event': 'content', 'agent': 'research', 'text': text})}\n\n"
+                await asyncio.sleep(0.01) # Small sleep to yield execution and simulate real-time stream
+            break
+        except Exception as e:
+            is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
+            if is_quota and attempt < 3:
+                yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'start', 'message': f'Research Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
+                research_output = ""
+                await asyncio.sleep(12.0)
+            else:
+                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Research: {str(e)}'})}\n\n"
+                return
 
-        yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research Agent: Completed research phase!'})}\n\n"
-        await asyncio.sleep(1.0)
-    except APIError as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'API Error during Research: {e.message}'})}\n\n"
-        return
-    except Exception as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Research: {str(e)}'})}\n\n"
-        return
+    yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research Agent: Completed research phase!'})}\n\n"
+    await asyncio.sleep(1.0)
 
     # ==========================================
     # 2. WRITING AGENT
@@ -282,33 +278,39 @@ async def run_agent_pipeline(
     yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': 'Writing Agent: Creating the first draft based on research findings...'})}\n\n"
     await asyncio.sleep(0.5)
 
-    try:
-        writer_prompt = f"Here is the research brief:\n\n{research_output}\n\nWrite the first draft of the blog post now."
-        system_instruction = WRITING_AGENT_INSTRUCTIONS.format(tone=tone, length=length, topic=topic, language=language)
+    draft_output = ""
+    for attempt in range(4):
+        try:
+            writer_prompt = f"Here is the research brief:\n\n{research_output}\n\nWrite the first draft of the blog post now."
+            system_instruction = WRITING_AGENT_INSTRUCTIONS.format(tone=tone, length=length, topic=topic, language=language)
 
-        response_stream = client.models.generate_content_stream(
-            model=model_name,
-            contents=writer_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.7
+            response_stream = client.models.generate_content_stream(
+                model=model_name,
+                contents=writer_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.7
+                )
             )
-        )
 
-        for chunk in response_stream:
-            text = chunk.text or ""
-            draft_output += text
-            yield f"data: {json.dumps({'event': 'content', 'agent': 'writer', 'text': text})}\n\n"
-            await asyncio.sleep(0.01)
+            for chunk in response_stream:
+                text = chunk.text or ""
+                draft_output += text
+                yield f"data: {json.dumps({'event': 'content', 'agent': 'writer', 'text': text})}\n\n"
+                await asyncio.sleep(0.01)
+            break
+        except Exception as e:
+            is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
+            if is_quota and attempt < 3:
+                yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': f'Writing Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
+                draft_output = ""
+                await asyncio.sleep(12.0)
+            else:
+                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Writing: {str(e)}'})}\n\n"
+                return
 
-        yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing Agent: Completed first draft!'})}\n\n"
-        await asyncio.sleep(1.0)
-    except APIError as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'API Error during Writing: {e.message}'})}\n\n"
-        return
-    except Exception as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Writing: {str(e)}'})}\n\n"
-        return
+    yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing Agent: Completed first draft!'})}\n\n"
+    await asyncio.sleep(1.0)
 
     # ==========================================
     # 3. EDITING AGENT
@@ -316,32 +318,38 @@ async def run_agent_pipeline(
     yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': 'Editing Agent: Polishing the draft for flow, tone, and grammar...'})}\n\n"
     await asyncio.sleep(0.5)
 
-    try:
-        editor_prompt = f"Please edit and polish the following draft. Correct any structural errors, improve readability, and ensure headings flow logically:\n\n{draft_output}"
+    final_output = ""
+    for attempt in range(4):
+        try:
+            editor_prompt = f"Please edit and polish the following draft. Correct any structural errors, improve readability, and ensure headings flow logically:\n\n{draft_output}"
 
-        response_stream = client.models.generate_content_stream(
-            model=model_name,
-            contents=editor_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=EDITING_AGENT_INSTRUCTIONS,
-                temperature=0.3
+            response_stream = client.models.generate_content_stream(
+                model=model_name,
+                contents=editor_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=EDITING_AGENT_INSTRUCTIONS,
+                    temperature=0.3
+                )
             )
-        )
 
-        for chunk in response_stream:
-            text = chunk.text or ""
-            final_output += text
-            yield f"data: {json.dumps({'event': 'content', 'agent': 'editor', 'text': text})}\n\n"
-            await asyncio.sleep(0.01)
+            for chunk in response_stream:
+                text = chunk.text or ""
+                final_output += text
+                yield f"data: {json.dumps({'event': 'content', 'agent': 'editor', 'text': text})}\n\n"
+                await asyncio.sleep(0.01)
+            break
+        except Exception as e:
+            is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
+            if is_quota and attempt < 3:
+                yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': f'Editing Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
+                final_output = ""
+                await asyncio.sleep(12.0)
+            else:
+                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Editing: {str(e)}'})}\n\n"
+                return
 
-        yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing Agent: Completed final edit!'})}\n\n"
-        await asyncio.sleep(1.0)
-    except APIError as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'API Error during Editing: {e.message}'})}\n\n"
-        return
-    except Exception as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Editing: {str(e)}'})}\n\n"
-        return
+    yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing Agent: Completed final edit!'})}\n\n"
+    await asyncio.sleep(1.0)
 
     # ==========================================
     # 4. SEO AGENT
@@ -349,44 +357,36 @@ async def run_agent_pipeline(
     yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': 'SEO Agent: Generating SEO report and optimization tips...'})}\n\n"
     await asyncio.sleep(0.5)
 
-    try:
-        seo_prompt = f"Here is the final polished blog post:\n\n{final_output}\n\nPlease generate a comprehensive SEO optimization report for it."
-
-        for attempt in range(3):
-            try:
-                if attempt > 0:
-                    yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': f'SEO Agent: API busy, retrying (attempt {attempt+1}/3)...'})}\n\n"
-                    await asyncio.sleep(2)
-
-                response_stream = client.models.generate_content_stream(
-                    model=model_name,
-                    contents=seo_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SEO_AGENT_INSTRUCTIONS,
-                        temperature=0.3
-                    )
+    for attempt in range(4):
+        try:
+            seo_prompt = f"Here is the final polished blog post:\n\n{final_output}\n\nPlease generate a comprehensive SEO optimization report for it."
+            response_stream = client.models.generate_content_stream(
+                model=model_name,
+                contents=seo_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SEO_AGENT_INSTRUCTIONS,
+                    temperature=0.3
                 )
+            )
 
-                for chunk in response_stream:
-                    text = chunk.text or ""
-                    yield f"data: {json.dumps({'event': 'content', 'agent': 'seo', 'text': text})}\n\n"
-                    await asyncio.sleep(0.01)
+            for chunk in response_stream:
+                text = chunk.text or ""
+                yield f"data: {json.dumps({'event': 'content', 'agent': 'seo', 'text': text})}\n\n"
+                await asyncio.sleep(0.01)
+            break
+        except Exception as e:
+            is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
+            if is_quota and attempt < 3:
+                yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': f'SEO Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
+                await asyncio.sleep(12.0)
+            else:
+                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during SEO analysis: {str(e)}'})}\n\n"
+                return
 
-                break
-            except Exception as e:
-                if attempt < 2:
-                    continue
-                raise e
+    yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO Agent: Completed SEO report!'})}\n\n"
+    await asyncio.sleep(0.5)
+    yield f"data: {json.dumps({'event': 'complete', 'message': 'All agents have completed their tasks. Blog post and SEO report are ready!'})}\n\n"
 
-        yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO Agent: Completed SEO report!'})}\n\n"
-        await asyncio.sleep(0.5)
-        yield f"data: {json.dumps({'event': 'complete', 'message': 'All agents have completed their tasks. Blog post and SEO report are ready!'})}\n\n"
-    except APIError as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'API Error during SEO analysis: {e.message}'})}\n\n"
-        return
-    except Exception as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'Error during SEO analysis: {str(e)}'})}\n\n"
-        return
 
 @app.get("/api/generate")
 async def generate_blog_post(
