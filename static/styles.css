@@ -1317,97 +1317,125 @@ body.theme-light .output-info-bar {
 
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
-    html {
-        font-size: 14px !important;
-    }
+    /* General: Set font-size base to 15px on mobile body */
     body {
-        font-size: 14px !important;
+        font-size: 15px !important;
+    }
+
+    /* Layout: Change .app-grid to display block. Set width 100% on all cards. Set padding 1rem on .glass-card. Set margin-bottom 1rem between cards. */
+    .app-grid {
+        display: block !important;
     }
     
-    /* Font size reductions */
-    .logo-area h1 { font-size: 1.75rem !important; }
-    .logo-area p { font-size: 0.85rem !important; }
-    .glass-card h2 { font-size: 1.1rem !important; }
-    .step-content h3 { font-size: 0.85rem !important; }
-    .step-desc { font-size: 0.72rem !important; }
-    .step-status { font-size: 0.65rem !important; }
-    .tab-btn { font-size: 0.85rem !important; }
-    .output-info-bar { font-size: 0.75rem !important; }
-    .console-output { font-size: 0.75rem !important; }
-    .markdown-body { font-size: 0.85rem !important; }
-    .markdown-body h1 { font-size: 1.4rem !important; }
-    .markdown-body h2 { font-size: 1.15rem !important; }
-    .markdown-body h3 { font-size: 1rem !important; }
-    label { font-size: 0.8rem !important; }
-    select, textarea, input { font-size: 0.85rem !important; }
-    .history-btn { font-size: 0.75rem !important; }
-    
-    /* Card padding */
     .glass-card {
-        padding: 0.75rem !important;
+        width: 100% !important;
+        padding: 1rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    /* Header: Stack title and subtitle vertically. Font size of h1 to 1.4rem on mobile. */
+    .app-header {
+        text-align: center !important;
+        margin-bottom: 1.5rem !important;
     }
     
-    /* App header stacking */
-    .app-header {
-        text-align: center;
-        margin-bottom: 1.5rem;
-    }
     .logo-area {
-        flex-direction: column;
-        gap: 0.5rem;
-        align-items: center;
-        text-align: center;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+        align-items: center !important;
+        text-align: center !important;
     }
+    
     .logo-area div {
         display: flex;
         flex-direction: column;
         align-items: center;
     }
-    
-    /* Config form vertical stack */
+
+    .logo-area h1 {
+        font-size: 1.4rem !important;
+    }
+
+    .logo-area p {
+        font-size: 0.85rem !important;
+    }
+
+    /* Configuration: Stack all inputs vertically — topic textarea full width height 80px, each dropdown full width, API key full width, Launch button full width height 48px font-size 1rem bold. */
     #generator-form {
-        grid-template-columns: 1fr !important;
+        display: flex !important;
+        flex-direction: column !important;
         gap: 1rem !important;
     }
+    
     #generator-form .input-group,
     #generator-form .input-group.button-group {
         width: 100% !important;
     }
-    .glow-button {
+
+    #topic {
+        width: 100% !important;
+        height: 80px !important;
+        min-height: 80px !important;
+        resize: none !important;
+    }
+
+    #generator-form select,
+    #generator-form input,
+    .api-key-container {
         width: 100% !important;
     }
-    
-    /* Touch target heights */
-    select, textarea, input[type="password"], input[type="text"], .api-key-container input {
-        min-height: 44px !important;
-        height: 44px !important;
+
+    #generate-btn {
+        width: 100% !important;
+        height: 48px !important;
+        font-size: 1rem !important;
+        font-weight: bold !important;
     }
-    
-    /* Agent timeline vertical */
+
+    /* Agent Timeline: Change .agent-timeline to flex-direction column on mobile. Each .timeline-step takes full width. Show agents as a vertical list with left-aligned icons and text beside them. */
     .agent-timeline {
         flex-direction: column !important;
         align-items: stretch !important;
-        gap: 2rem !important;
-        padding-left: 1rem !important;
+        gap: 1.5rem !important;
+        padding-left: 0.5rem !important;
     }
+    
     .agent-timeline::before {
         top: 0 !important;
-        left: 2.5rem !important;
+        left: 2rem !important;
         width: 2px !important;
         height: 100% !important;
     }
+
     .timeline-step {
+        width: 100% !important;
         flex-direction: row !important;
         align-items: center !important;
         text-align: left !important;
-        gap: 1.5rem !important;
+        gap: 1.25rem !important;
+        flex: none !important;
     }
+
+    .step-badge {
+        width: 3rem !important;
+        height: 3rem !important;
+        font-size: 1.1rem !important;
+    }
+
     .step-content {
         align-items: flex-start !important;
         text-align: left !important;
     }
-    
-    /* Scrollable output tabs */
+
+    .step-content h3 {
+        font-size: 0.9rem !important;
+    }
+
+    .step-desc {
+        font-size: 0.75rem !important;
+    }
+
+    /* Tabs: Make tab buttons scrollable horizontally using overflow-x auto white-space nowrap on .tabs-header. Each tab button padding 0.5rem 0.75rem font-size 0.8rem. */
     .tabs-header {
         overflow-x: auto !important;
         white-space: nowrap !important;
@@ -1415,16 +1443,94 @@ body.theme-light .output-info-bar {
         padding-bottom: 0.5rem !important;
         scrollbar-width: none !important; /* Firefox */
     }
+
     .tabs-header::-webkit-scrollbar {
         display: none !important; /* Chrome/Safari */
     }
+
     .tab-btn {
         flex-shrink: 0 !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.8rem !important;
     }
-    
-    /* Settings panel spacing and styling */
+
+    /* Output: Set .output-content max-height 50vh on mobile. Font-size 0.9rem. */
+    .output-content {
+        max-height: 50vh !important;
+        font-size: 0.9rem !important;
+    }
+
+    /* Buttons: Copy button and Toggle button full width on mobile stacked vertically gap 0.5rem. */
+    .editor-actions {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+        width: 100% !important;
+    }
+
+    .editor-actions button,
+    .editor-actions .glass-btn,
+    .editor-actions .text-btn {
+        width: 100% !important;
+        justify-content: center !important;
+        margin: 0 !important;
+    }
+
+    /* Settings panel: Full width, all controls stacked vertically. */
     .settings-grid {
         grid-template-columns: 1fr !important;
-        gap: 1rem !important;
+        gap: 1.25rem !important;
+        width: 100% !important;
+    }
+    
+    .setting-item {
+        width: 100% !important;
+    }
+
+    /* Touch targets: All dropdowns and buttons minimum height 44px minimum touch area. */
+    button,
+    select,
+    input,
+    .theme-btn,
+    .color-swatch,
+    .history-btn {
+        min-height: 44px !important;
+    }
+    
+    .color-swatch {
+        width: 2.2rem !important;
+        height: 2.2rem !important;
+    }
+}
+
+/* Remove all hover-only animations on mobile using pointer coarse media query. */
+@media (hover: none) and (pointer: coarse) {
+    .glass-card:hover {
+        transform: none !important;
+        border-color: var(--card-border) !important;
+    }
+    
+    .glow-button:hover {
+        transform: none !important;
+        box-shadow: var(--shadow-glow) !important;
+    }
+    
+    .settings-toggle-btn:hover {
+        transform: none !important;
+        background: transparent !important;
+    }
+    
+    .history-btn:hover {
+        transform: none !important;
+        background: rgba(255, 255, 255, 0.02) !important;
+        border-color: var(--card-border) !important;
+    }
+    
+    .tab-btn:hover {
+        color: var(--text-muted) !important;
+    }
+    
+    .tab-btn.active:hover {
+        color: var(--accent-blue) !important;
     }
 }
