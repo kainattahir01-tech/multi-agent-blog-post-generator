@@ -44,9 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let seoText = "";
     let showRaw = false;
 
-    // Timer Variables
+    // Mobile Fallback and Timer State Variables
+    let fetchController = null;
+    let isFetchingFallback = false;
+    let onerrorCount = 0;
+    let timeoutTimer = null;
     let startTime = null;
     let timerInterval = null;
+    let livenessTimer = null;
 
     // Toggle API Key Visibility
     toggleKeyBtn.addEventListener('click', () => {
@@ -189,14 +194,76 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('info-reading-time').textContent = readingTime + ' min';
     }
 
-    // Submit Generator Form
-    form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        // If already running, cancel it
+    // 90 Seconds Timeout Timers
+    function startTimeoutTimer(url) {
+        clearTimeoutTimer();
+        timeoutTimer = setTimeout(() => {
+            log("Pipeline timed out after 90 seconds. Aborting.", true);
+            terminateConnection();
+            handleErrorEvent({ message: "Operation timed out. No completion received from server within 90 seconds." });
+        }, 90000);
+    }
+
+    function clearTimeoutTimer() {
+        if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+        }
+    }
+
+    // 5 Seconds EventSource Handshake Liveness Check
+    function startLivenessCheck(url) {
+        clearLivenessCheck();
+        livenessTimer = setTimeout(() => {
+            if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
+                log("SSE connection handshake timed out. Switching to Fetch-based fallback...");
+                terminateConnection();
+                startFetchFallback(url);
+            }
+        }, 5000);
+    }
+
+    function clearLivenessCheck() {
+        if (livenessTimer) {
+            clearTimeout(livenessTimer);
+            livenessTimer = null;
+        }
+    }
+
+    function terminateConnection() {
+        clearTimeoutTimer();
+        clearLivenessCheck();
         if (eventSource) {
             eventSource.close();
             eventSource = null;
+        }
+        if (fetchController) {
+            fetchController.abort();
+            fetchController = null;
+        }
+        isFetchingFallback = false;
+    }
+
+    // Bind Launch Pipeline button on both click and touch devices
+    generateBtn.addEventListener('click', handleGenerateBtnTrigger);
+    generateBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleGenerateBtnTrigger(e);
+    });
+
+    function handleGenerateBtnTrigger(e) {
+        form.dispatchEvent(new Event('submit', { cancelable: true }));
+    }
+
+    // Submit Generator Form
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // If already running, cancel it
+        if (eventSource || isFetchingFallback) {
+            terminateConnection();
             log("Pipeline terminated by user.");
             resetButtonState();
             return;
@@ -210,6 +277,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const languageSelect = document.getElementById('language');
         const language = languageSelect ? languageSelect.value : 'English';
 
+        // Construct EventSource URL - ALWAYS include api_key parameter in search query
+        const url = `/api/generate?topic=${encodeURIComponent(topic)}&tone=${encodeURIComponent(tone)}&length=${encodeURIComponent(length)}&language=${encodeURIComponent(language)}&api_key=${encodeURIComponent(apiKey)}`;
+
         // UI Reset
         document.body.classList.add('generating');
         generateBtn.classList.add('running');
@@ -221,8 +291,9 @@ document.addEventListener('DOMContentLoaded', () => {
             topProgressBar.classList.add('loading');
         }
 
-        // Reset stats
+        // Reset stats and start timeout timer
         startStatsTimer();
+        startTimeoutTimer(url);
         document.getElementById('info-word-count').textContent = '0';
         document.getElementById('info-reading-time').textContent = '0 min';
 
@@ -252,50 +323,144 @@ document.addEventListener('DOMContentLoaded', () => {
 
         log("Connecting to Agent pipeline backend...");
 
-        // Construct EventSource URL
-        let url = `/api/generate?topic=${encodeURIComponent(topic)}&tone=${encodeURIComponent(tone)}&length=${encodeURIComponent(length)}&language=${encodeURIComponent(language)}`;
-        if (apiKey) {
-            url += `&api_key=${encodeURIComponent(apiKey)}`;
-        }
+        onerrorCount = 0;
+        isFetchingFallback = false;
 
-        // Establish connection
-        eventSource = new EventSource(url);
+        connectSSE(url);
+    });
 
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                
-                switch (data.event) {
-                    case 'status':
-                        handleStatusEvent(data);
-                        break;
-                    case 'content':
-                        handleContentEvent(data);
-                        break;
-                    case 'complete':
-                        handleCompleteEvent(data);
-                        break;
-                    case 'error':
-                        handleErrorEvent(data);
-                        break;
-                }
-            } catch (err) {
-                console.error("Failed to parse SSE event data:", err);
-            }
-        };
-
-        eventSource.onerror = (err) => {
-            console.error("EventSource encountered an error:", err);
-            log("Server connection error. Retrying...", true);
+    function connectSSE(url) {
+        onerrorCount = 0;
+        try {
+            eventSource = new EventSource(url);
             
-            if (eventSource.readyState === EventSource.CLOSED || eventSource.readyState === EventSource.CONNECTING) {
-                log("Connection lost. Resetting pipeline.", true);
-                eventSource.close();
-                eventSource = null;
+            // Start 5-second liveness check to catch silent hangs in CONNECTING state
+            startLivenessCheck(url);
+
+            eventSource.onmessage = (event) => {
+                clearLivenessCheck();
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    switch (data.event) {
+                        case 'status':
+                            handleStatusEvent(data);
+                            break;
+                        case 'content':
+                            handleContentEvent(data);
+                            break;
+                        case 'complete':
+                            clearTimeoutTimer();
+                            handleCompleteEvent(data);
+                            terminateConnection();
+                            break;
+                        case 'error':
+                            clearTimeoutTimer();
+                            handleErrorEvent(data);
+                            terminateConnection();
+                            break;
+                    }
+                } catch (err) {
+                    console.error("Failed to parse SSE event data:", err);
+                }
+            };
+
+            eventSource.onerror = (err) => {
+                console.error("EventSource encountered an error:", err);
+                onerrorCount++;
+                
+                // Switch to Fetch falling back when onerror occurs multiple times
+                if (onerrorCount > 1) {
+                    log("SSE connection issue detected. Switching to Fetch-based polling fallback...");
+                    terminateConnection();
+                    startFetchFallback(url);
+                } else {
+                    log("Connection retrying...", false);
+                }
+            };
+        } catch (e) {
+            console.error("EventSource initialization failed, switching to fetch fallback:", e);
+            log("EventSource connection blocked. Switching to Fetch-based fallback...");
+            terminateConnection();
+            startFetchFallback(url);
+        }
+    }
+
+    async function startFetchFallback(url) {
+        if (isFetchingFallback) return;
+        isFetchingFallback = true;
+        
+        startTimeoutTimer(url);
+
+        fetchController = new AbortController();
+        const signal = fetchController.signal;
+
+        try {
+            const response = await fetch(url, { signal });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
+
+            while (isFetchingFallback) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop(); // save trailing partial line
+
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.startsWith("data: ")) {
+                        const jsonStr = trimmedLine.substring(6).trim();
+                        if (!jsonStr) continue;
+                        try {
+                            const data = JSON.parse(jsonStr);
+                            switch (data.event) {
+                                case 'status':
+                                    handleStatusEvent(data);
+                                    break;
+                                case 'content':
+                                    handleContentEvent(data);
+                                    break;
+                                case 'complete':
+                                    clearTimeoutTimer();
+                                    handleCompleteEvent(data);
+                                    terminateConnection();
+                                    return;
+                                case 'error':
+                                    clearTimeoutTimer();
+                                    handleErrorEvent(data);
+                                    terminateConnection();
+                                    return;
+                            }
+                        } catch (e) {
+                            console.error("Failed to parse fallback JSON line:", e, trimmedLine);
+                        }
+                    }
+                }
+            }
+            
+            if (isFetchingFallback) {
+                clearTimeoutTimer();
+                log("Fetch fallback stream ended unexpectedly.", true);
                 resetButtonState();
             }
-        };
-    });
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                log("Fetch stream request terminated by user.");
+            } else {
+                console.error("Fetch fallback error:", err);
+                clearTimeoutTimer();
+                handleErrorEvent({ message: err.message || "Failed to retrieve stream from server." });
+            }
+            terminateConnection();
+        }
+    }
 
     function handleStatusEvent(data) {
         log(data.message);
@@ -304,7 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepResearch, 'active');
                 switchTab('tab-research');
-                researchOutput.innerHTML = "";
+                researchOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Research Agent is researching the topic... Please wait.</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepResearch, 'completed');
                 document.querySelector('.copy-tab-btn[data-target="research-output"]').style.display = 'block';
@@ -313,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepWriter, 'active');
                 switchTab('tab-writer');
-                writerOutput.innerHTML = "";
+                writerOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Writing Agent is drafting the post... (This can take 15-30 seconds depending on length)</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepWriter, 'completed');
                 document.querySelector('.copy-tab-btn[data-target="writer-output"]').style.display = 'block';
@@ -322,7 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepEditor, 'active');
                 switchTab('tab-editor');
-                editorOutput.innerHTML = "";
+                editorOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Editing Agent is refining the draft... (This can take 15-30 seconds)</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepEditor, 'completed');
                 copyBtn.style.display = 'flex';
@@ -334,7 +499,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepSeo, 'active');
                 switchTab('tab-seo');
-                seoOutput.innerHTML = "";
+                seoOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>SEO Agent is running diagnostics and generating tags...</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepSeo, 'completed');
                 document.querySelector('.copy-tab-btn[data-target="seo-output"]').style.display = 'block';
@@ -374,8 +539,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const date = new Date().toLocaleDateString();
         saveToHistory(topic, date, editorText);
         
-        eventSource.close();
-        eventSource = null;
         resetButtonState();
     }
 
@@ -394,8 +557,6 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
         
-        eventSource.close();
-        eventSource = null;
         resetButtonState();
     }
 
@@ -550,7 +711,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Combined Collapsible Settings Panel Logic
+    // Collapsible Settings Panel UI elements
     const settingsToggle = document.getElementById('settings-toggle');
     const settingsContent = document.getElementById('settings-content');
     const settingsResetBtn = document.getElementById('settings-reset-btn');
