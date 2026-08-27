@@ -1314,3 +1314,117 @@ body.theme-light .output-info-bar {
         border: 1px solid #d1d5db !important;
     }
 }
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+    html {
+        font-size: 14px !important;
+    }
+    body {
+        font-size: 14px !important;
+    }
+    
+    /* Font size reductions */
+    .logo-area h1 { font-size: 1.75rem !important; }
+    .logo-area p { font-size: 0.85rem !important; }
+    .glass-card h2 { font-size: 1.1rem !important; }
+    .step-content h3 { font-size: 0.85rem !important; }
+    .step-desc { font-size: 0.72rem !important; }
+    .step-status { font-size: 0.65rem !important; }
+    .tab-btn { font-size: 0.85rem !important; }
+    .output-info-bar { font-size: 0.75rem !important; }
+    .console-output { font-size: 0.75rem !important; }
+    .markdown-body { font-size: 0.85rem !important; }
+    .markdown-body h1 { font-size: 1.4rem !important; }
+    .markdown-body h2 { font-size: 1.15rem !important; }
+    .markdown-body h3 { font-size: 1rem !important; }
+    label { font-size: 0.8rem !important; }
+    select, textarea, input { font-size: 0.85rem !important; }
+    .history-btn { font-size: 0.75rem !important; }
+    
+    /* Card padding */
+    .glass-card {
+        padding: 0.75rem !important;
+    }
+    
+    /* App header stacking */
+    .app-header {
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+    .logo-area {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: center;
+        text-align: center;
+    }
+    .logo-area div {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    /* Config form vertical stack */
+    #generator-form {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+    #generator-form .input-group,
+    #generator-form .input-group.button-group {
+        width: 100% !important;
+    }
+    .glow-button {
+        width: 100% !important;
+    }
+    
+    /* Touch target heights */
+    select, textarea, input[type="password"], input[type="text"], .api-key-container input {
+        min-height: 44px !important;
+        height: 44px !important;
+    }
+    
+    /* Agent timeline vertical */
+    .agent-timeline {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 2rem !important;
+        padding-left: 1rem !important;
+    }
+    .agent-timeline::before {
+        top: 0 !important;
+        left: 2.5rem !important;
+        width: 2px !important;
+        height: 100% !important;
+    }
+    .timeline-step {
+        flex-direction: row !important;
+        align-items: center !important;
+        text-align: left !important;
+        gap: 1.5rem !important;
+    }
+    .step-content {
+        align-items: flex-start !important;
+        text-align: left !important;
+    }
+    
+    /* Scrollable output tabs */
+    .tabs-header {
+        overflow-x: auto !important;
+        white-space: nowrap !important;
+        flex-wrap: nowrap !important;
+        padding-bottom: 0.5rem !important;
+        scrollbar-width: none !important; /* Firefox */
+    }
+    .tabs-header::-webkit-scrollbar {
+        display: none !important; /* Chrome/Safari */
+    }
+    .tab-btn {
+        flex-shrink: 0 !important;
+    }
+    
+    /* Settings panel spacing and styling */
+    .settings-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+}
