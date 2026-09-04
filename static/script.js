@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const stepSeo = document.getElementById('step-seo');
     
     // Console Log Element
-    const consoleLogs = document.getElementById('console-logs');
+    const consoleLogs = document.getElementById('console-logs'); 
     
     // Output Panes
     const researchOutput = document.getElementById('research-output');
@@ -44,9 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let seoText = "";
     let showRaw = false;
 
-    // Timer Variables
+    // Mobile Fallback and Timer State Variables
+    let fetchController = null;
+    let isFetchingFallback = false;
+    let onerrorCount = 0;
+    let timeoutTimer = null;
     let startTime = null;
     let timerInterval = null;
+    let livenessTimer = null;
 
     // Toggle API Key Visibility
     toggleKeyBtn.addEventListener('click', () => {
@@ -189,111 +194,116 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('info-reading-time').textContent = readingTime + ' min';
     }
 
-    // Submit Generator Form
-    form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        // If already running, cancel it
+    // 120 Seconds Timeout Timer
+    function startTimeoutTimer(url) {
+        clearTimeoutTimer();
+        timeoutTimer = setTimeout(() => {
+            log("Connection timed out. Please try again.", true);
+            terminateConnection();
+            handleErrorEvent({ message: "Connection timed out. Please try again." });
+        }, 120000);
+    }
+
+    function clearTimeoutTimer() {
+        if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+        }
+    }
+
+    // 5 Seconds EventSource Handshake Liveness Check
+    function startLivenessCheck(url) {
+        clearLivenessCheck();
+        livenessTimer = setTimeout(() => {
+            if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
+                log("SSE connection handshake timed out. Switching to Fetch-based fallback...");
+                terminateConnection();
+                startFetchFallback(url);
+            }
+        }, 5000);
+    }
+
+    function clearLivenessCheck() {
+        if (livenessTimer) {
+            clearTimeout(livenessTimer);
+            livenessTimer = null;
+        }
+    }
+
+    function terminateConnection() {
+        clearTimeoutTimer();
+        clearLivenessCheck();
         if (eventSource) {
             eventSource.close();
             eventSource = null;
-            log("Pipeline terminated by user.");
+        }
+        if (fetchController) {
+            fetchController.abort();
+            fetchController = null;
+        }
+        isFetchingFallback = false;
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
             resetButtonState();
             return;
         }
-
-        // Retrieve config
         const topic = topicInput.value.trim();
+        if (!topic) {
+            alert('Please enter a blog topic');
+            return;
+        }
         const tone = toneSelect.value;
         const length = lengthSelect.value;
-        const apiKey = apiKeyInput.value.trim();
-        const languageSelect = document.getElementById('language');
-        const language = languageSelect ? languageSelect.value : 'English';
-
-        // UI Reset
-        document.body.classList.add('generating');
-        generateBtn.classList.add('running');
-        generateBtn.innerHTML = `<span><i class="fa-solid fa-stop"></i> Terminate Pipeline</span>`;
-        
-        // Reset top progress bar
-        if (topProgressBar) {
-            topProgressBar.classList.remove('fade-out');
-            topProgressBar.classList.add('loading');
+        const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+        let url = '/api/generate?topic=' + encodeURIComponent(topic) + '&tone=' + encodeURIComponent(tone) + '&length=' + encodeURIComponent(length);
+        if (apiKey) {
+            url += '&api_key=' + encodeURIComponent(apiKey);
         }
+        generateBtn.innerHTML = '<span>Terminate Pipeline</span>';
+        generateBtn.classList.add('running');
+        document.body.classList.add('generating');
 
-        // Reset stats
-        startStatsTimer();
-        document.getElementById('info-word-count').textContent = '0';
-        document.getElementById('info-reading-time').textContent = '0 min';
-
-        // Reset steps
-        updateStepUI(stepResearch, 'idle');
-        updateStepUI(stepWriter, 'idle');
-        updateStepUI(stepEditor, 'idle');
-        updateStepUI(stepSeo, 'idle');
- 
-        // Reset outputs
+        // Reset text buffers and UI steps
         researchText = "";
         writerText = "";
         editorText = "";
         seoText = "";
-        showRaw = false;
- 
-        researchOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Waiting for Research Agent...</p></div>';
-        writerOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>Waiting for writing phase...</p></div>';
-        editorOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>Waiting for editing phase...</p></div>';
-        seoOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>Waiting for SEO optimization phase...</p></div>';
+        startStatsTimer();
+        updateStepUI(stepResearch, 'idle');
+        updateStepUI(stepWriter, 'idle');
+        updateStepUI(stepEditor, 'idle');
+        updateStepUI(stepSeo, 'idle');
+        document.getElementById('info-word-count').textContent = '0';
+        document.getElementById('info-reading-time').textContent = '0 min';
 
-        copyBtn.style.display = 'none';
-        toggleRawBtn.style.display = 'none';
-        pdfBtn.style.display = 'none';
-        htmlBtn.style.display = 'none';
-        document.querySelectorAll('.copy-tab-btn').forEach(btn => btn.style.display = 'none');
-
-        log("Connecting to Agent pipeline backend...");
-
-        // Construct EventSource URL
-        let url = `/api/generate?topic=${encodeURIComponent(topic)}&tone=${encodeURIComponent(tone)}&length=${encodeURIComponent(length)}&language=${encodeURIComponent(language)}`;
-        if (apiKey) {
-            url += `&api_key=${encodeURIComponent(apiKey)}`;
-        }
-
-        // Establish connection
         eventSource = new EventSource(url);
-
-        eventSource.onmessage = (event) => {
+        eventSource.onmessage = function(event) {
+            console.log('SSE message received:', event.data);
             try {
                 const data = JSON.parse(event.data);
-                
-                switch (data.event) {
-                    case 'status':
-                        handleStatusEvent(data);
-                        break;
-                    case 'content':
-                        handleContentEvent(data);
-                        break;
-                    case 'complete':
-                        handleCompleteEvent(data);
-                        break;
-                    case 'error':
-                        handleErrorEvent(data);
-                        break;
-                }
-            } catch (err) {
-                console.error("Failed to parse SSE event data:", err);
+                if (data.event === 'status') handleStatusEvent(data);
+                else if (data.event === 'content') handleContentEvent(data);
+                else if (data.event === 'complete') handleCompleteEvent(data);
+                else if (data.event === 'error') handleErrorEvent(data);
+            } catch(err) {
+                console.error('Parse error:', err);
             }
         };
-
-        eventSource.onerror = (err) => {
-            console.error("EventSource encountered an error:", err);
-            log("Server connection error. Retrying...", true);
-            
-            if (eventSource.readyState === EventSource.CLOSED || eventSource.readyState === EventSource.CONNECTING) {
-                log("Connection lost. Resetting pipeline.", true);
-                eventSource.close();
-                eventSource = null;
-                resetButtonState();
+        eventSource.onerror = function(err) {
+            console.error('SSE error details:', err, 'readyState:', eventSource.readyState);
+            if (eventSource.readyState === EventSource.CLOSED) {
+                log('Connection closed by server. Check that your API key is valid.', true);
+            } else {
+                log('Connection error — retrying...', true);
             }
+            eventSource.close();
+            eventSource = null;
+            resetButtonState();
         };
     });
 
@@ -304,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepResearch, 'active');
                 switchTab('tab-research');
-                researchOutput.innerHTML = "";
+                researchOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Research Agent is researching the topic... Please wait.</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepResearch, 'completed');
                 document.querySelector('.copy-tab-btn[data-target="research-output"]').style.display = 'block';
@@ -313,7 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepWriter, 'active');
                 switchTab('tab-writer');
-                writerOutput.innerHTML = "";
+                writerOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Writing Agent is drafting the post... (This can take 15-30 seconds depending on length)</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepWriter, 'completed');
                 document.querySelector('.copy-tab-btn[data-target="writer-output"]').style.display = 'block';
@@ -322,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepEditor, 'active');
                 switchTab('tab-editor');
-                editorOutput.innerHTML = "";
+                editorOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Editing Agent is refining the draft... (This can take 15-30 seconds)</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepEditor, 'completed');
                 copyBtn.style.display = 'flex';
@@ -334,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.status === 'start') {
                 updateStepUI(stepSeo, 'active');
                 switchTab('tab-seo');
-                seoOutput.innerHTML = "";
+                seoOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>SEO Agent is running diagnostics and generating tags...</p></div>';
             } else if (data.status === 'done') {
                 updateStepUI(stepSeo, 'completed');
                 document.querySelector('.copy-tab-btn[data-target="seo-output"]').style.display = 'block';
@@ -374,8 +384,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const date = new Date().toLocaleDateString();
         saveToHistory(topic, date, editorText);
         
-        eventSource.close();
-        eventSource = null;
         resetButtonState();
     }
 
@@ -394,8 +402,6 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
         
-        eventSource.close();
-        eventSource = null;
         resetButtonState();
     }
 
@@ -550,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Combined Collapsible Settings Panel Logic
+    // Collapsible Settings Panel UI elements
     const settingsToggle = document.getElementById('settings-toggle');
     const settingsContent = document.getElementById('settings-content');
     const settingsResetBtn = document.getElementById('settings-reset-btn');

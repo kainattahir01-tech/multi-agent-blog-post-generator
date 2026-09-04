@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: blogagent
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 120
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false

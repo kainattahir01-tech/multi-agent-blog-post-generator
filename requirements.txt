@@ -1,6 +1,7 @@
 fastapi
-uvicorn
-google-antigravity
+uvicorn[standard]
 google-genai
-python-multipart
 python-dotenv
+python-multipart
+httptools
+websockets
