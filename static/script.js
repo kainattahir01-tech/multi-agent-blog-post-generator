@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const stepSeo = document.getElementById('step-seo');
     
     // Console Log Element
-    const consoleLogs = document.getElementById('console-logs');
+    const consoleLogs = document.getElementById('console-logs'); 
     
     // Output Panes
     const researchOutput = document.getElementById('research-output');
@@ -194,14 +194,14 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('info-reading-time').textContent = readingTime + ' min';
     }
 
-    // 90 Seconds Timeout Timers
+    // 120 Seconds Timeout Timer
     function startTimeoutTimer(url) {
         clearTimeoutTimer();
         timeoutTimer = setTimeout(() => {
-            log("Pipeline timed out after 90 seconds. Aborting.", true);
+            log("Connection timed out. Please try again.", true);
             terminateConnection();
-            handleErrorEvent({ message: "Operation timed out. No completion received from server within 90 seconds." });
-        }, 90000);
+            handleErrorEvent({ message: "Connection timed out. Please try again." });
+        }, 120000);
     }
 
     function clearTimeoutTimer() {
@@ -244,223 +244,63 @@ document.addEventListener('DOMContentLoaded', () => {
         isFetchingFallback = false;
     }
 
-    // Bind Launch Pipeline button on both click and touch devices
-    generateBtn.addEventListener('click', handleGenerateBtnTrigger);
-    generateBtn.addEventListener('touchend', (e) => {
+    form.addEventListener('submit', function(e) {
         e.preventDefault();
-        e.stopPropagation();
-        handleGenerateBtnTrigger(e);
-    });
-
-    function handleGenerateBtnTrigger(e) {
-        form.dispatchEvent(new Event('submit', { cancelable: true }));
-    }
-
-    // Submit Generator Form
-    form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // If already running, cancel it
-        if (eventSource || isFetchingFallback) {
-            terminateConnection();
-            log("Pipeline terminated by user.");
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
             resetButtonState();
             return;
         }
-
-        // Retrieve config
         const topic = topicInput.value.trim();
+        if (!topic) {
+            alert('Please enter a blog topic');
+            return;
+        }
         const tone = toneSelect.value;
         const length = lengthSelect.value;
-        const apiKey = apiKeyInput.value.trim();
-        const languageSelect = document.getElementById('language');
-        const language = languageSelect ? languageSelect.value : 'English';
-
-        // Construct EventSource URL - ALWAYS include api_key parameter in search query
-        const url = `/api/generate?topic=${encodeURIComponent(topic)}&tone=${encodeURIComponent(tone)}&length=${encodeURIComponent(length)}&language=${encodeURIComponent(language)}&api_key=${encodeURIComponent(apiKey)}`;
-
-        // UI Reset
-        document.body.classList.add('generating');
-        generateBtn.classList.add('running');
-        generateBtn.innerHTML = `<span><i class="fa-solid fa-stop"></i> Terminate Pipeline</span>`;
-        
-        // Reset top progress bar
-        if (topProgressBar) {
-            topProgressBar.classList.remove('fade-out');
-            topProgressBar.classList.add('loading');
+        const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+        let url = '/api/generate?topic=' + encodeURIComponent(topic) + '&tone=' + encodeURIComponent(tone) + '&length=' + encodeURIComponent(length);
+        if (apiKey) {
+            url += '&api_key=' + encodeURIComponent(apiKey);
         }
+        generateBtn.innerHTML = '<span>Terminate Pipeline</span>';
+        generateBtn.classList.add('running');
+        document.body.classList.add('generating');
 
-        // Reset stats and start timeout timer
-        startStatsTimer();
-        startTimeoutTimer(url);
-        document.getElementById('info-word-count').textContent = '0';
-        document.getElementById('info-reading-time').textContent = '0 min';
-
-        // Reset steps
-        updateStepUI(stepResearch, 'idle');
-        updateStepUI(stepWriter, 'idle');
-        updateStepUI(stepEditor, 'idle');
-        updateStepUI(stepSeo, 'idle');
- 
-        // Reset outputs
+        // Reset text buffers and UI steps
         researchText = "";
         writerText = "";
         editorText = "";
         seoText = "";
-        showRaw = false;
- 
-        researchOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Waiting for Research Agent...</p></div>';
-        writerOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>Waiting for writing phase...</p></div>';
-        editorOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>Waiting for editing phase...</p></div>';
-        seoOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>Waiting for SEO optimization phase...</p></div>';
+        startStatsTimer();
+        updateStepUI(stepResearch, 'idle');
+        updateStepUI(stepWriter, 'idle');
+        updateStepUI(stepEditor, 'idle');
+        updateStepUI(stepSeo, 'idle');
+        document.getElementById('info-word-count').textContent = '0';
+        document.getElementById('info-reading-time').textContent = '0 min';
 
-        copyBtn.style.display = 'none';
-        toggleRawBtn.style.display = 'none';
-        pdfBtn.style.display = 'none';
-        htmlBtn.style.display = 'none';
-        document.querySelectorAll('.copy-tab-btn').forEach(btn => btn.style.display = 'none');
-
-        log("Connecting to Agent pipeline backend...");
-
-        onerrorCount = 0;
-        isFetchingFallback = false;
-
-        connectSSE(url);
+        eventSource = new EventSource(url);
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.event === 'status') handleStatusEvent(data);
+                else if (data.event === 'content') handleContentEvent(data);
+                else if (data.event === 'complete') handleCompleteEvent(data);
+                else if (data.event === 'error') handleErrorEvent(data);
+            } catch(err) {
+                console.error('Parse error:', err);
+            }
+        };
+        eventSource.onerror = function(err) {
+            console.error('SSE error:', err);
+            eventSource.close();
+            eventSource = null;
+            resetButtonState();
+            log('Connection error. Please try again.', true);
+        };
     });
-
-    function connectSSE(url) {
-        onerrorCount = 0;
-        try {
-            eventSource = new EventSource(url);
-            
-            // Start 5-second liveness check to catch silent hangs in CONNECTING state
-            startLivenessCheck(url);
-
-            eventSource.onmessage = (event) => {
-                clearLivenessCheck();
-                try {
-                    const data = JSON.parse(event.data);
-                    
-                    switch (data.event) {
-                        case 'status':
-                            handleStatusEvent(data);
-                            break;
-                        case 'content':
-                            handleContentEvent(data);
-                            break;
-                        case 'complete':
-                            clearTimeoutTimer();
-                            handleCompleteEvent(data);
-                            terminateConnection();
-                            break;
-                        case 'error':
-                            clearTimeoutTimer();
-                            handleErrorEvent(data);
-                            terminateConnection();
-                            break;
-                    }
-                } catch (err) {
-                    console.error("Failed to parse SSE event data:", err);
-                }
-            };
-
-            eventSource.onerror = (err) => {
-                console.error("EventSource encountered an error:", err);
-                onerrorCount++;
-                
-                // Switch to Fetch falling back when onerror occurs multiple times
-                if (onerrorCount > 1) {
-                    log("SSE connection issue detected. Switching to Fetch-based polling fallback...");
-                    terminateConnection();
-                    startFetchFallback(url);
-                } else {
-                    log("Connection retrying...", false);
-                }
-            };
-        } catch (e) {
-            console.error("EventSource initialization failed, switching to fetch fallback:", e);
-            log("EventSource connection blocked. Switching to Fetch-based fallback...");
-            terminateConnection();
-            startFetchFallback(url);
-        }
-    }
-
-    async function startFetchFallback(url) {
-        if (isFetchingFallback) return;
-        isFetchingFallback = true;
-        
-        startTimeoutTimer(url);
-
-        fetchController = new AbortController();
-        const signal = fetchController.signal;
-
-        try {
-            const response = await fetch(url, { signal });
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder("utf-8");
-            let buffer = "";
-
-            while (isFetchingFallback) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop(); // save trailing partial line
-
-                for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    if (trimmedLine.startsWith("data: ")) {
-                        const jsonStr = trimmedLine.substring(6).trim();
-                        if (!jsonStr) continue;
-                        try {
-                            const data = JSON.parse(jsonStr);
-                            switch (data.event) {
-                                case 'status':
-                                    handleStatusEvent(data);
-                                    break;
-                                case 'content':
-                                    handleContentEvent(data);
-                                    break;
-                                case 'complete':
-                                    clearTimeoutTimer();
-                                    handleCompleteEvent(data);
-                                    terminateConnection();
-                                    return;
-                                case 'error':
-                                    clearTimeoutTimer();
-                                    handleErrorEvent(data);
-                                    terminateConnection();
-                                    return;
-                            }
-                        } catch (e) {
-                            console.error("Failed to parse fallback JSON line:", e, trimmedLine);
-                        }
-                    }
-                }
-            }
-            
-            if (isFetchingFallback) {
-                clearTimeoutTimer();
-                log("Fetch fallback stream ended unexpectedly.", true);
-                resetButtonState();
-            }
-        } catch (err) {
-            if (err.name === 'AbortError') {
-                log("Fetch stream request terminated by user.");
-            } else {
-                console.error("Fetch fallback error:", err);
-                clearTimeoutTimer();
-                handleErrorEvent({ message: err.message || "Failed to retrieve stream from server." });
-            }
-            terminateConnection();
-        }
-    }
 
     function handleStatusEvent(data) {
         log(data.message);
