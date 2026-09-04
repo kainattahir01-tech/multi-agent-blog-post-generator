@@ -71,9 +71,19 @@ def get_api_key(x_api_key: str = Header(None), api_key: str = Query(None)) -> st
         detail="Gemini API Key not found. Please provide it in the input field, via X-API-Key header, or set GEMINI_API_KEY in the environment."
     )
 
+def sse_message(data: dict) -> str:
+    """Helper to safely format SSE data payloads without f-string quote or backslash issues."""
+    return "data: " + json.dumps(data) + "\n\n"
+
 async def run_mock_pipeline(topic: str, tone: str, length: str) -> AsyncGenerator[str, None]:
     # Yield research start
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'start', 'message': f'Research Agent (SIMULATED): Conducting research on \"{topic}\"...'})}\n\n"
+    yield sse_message({
+        'event': 'status',
+        'agent': 'research',
+        'status': 'start',
+        'message': f"Research Agent (SIMULATED): Conducting research on '{topic}'..."
+    })
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
     
     research_text = f"""# Research Brief: {topic}
@@ -102,14 +112,17 @@ async def run_mock_pipeline(topic: str, tone: str, length: str) -> AsyncGenerato
     chunk_size = 40
     for i in range(0, len(research_text), chunk_size):
         chunk = research_text[i:i+chunk_size]
-        yield f"data: {json.dumps({'event': 'content', 'agent': 'research', 'text': chunk})}\n\n"
+        yield sse_message({'event': 'content', 'agent': 'research', 'text': chunk})
+        await asyncio.sleep(0)
         await asyncio.sleep(0.04)
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research Agent: Completed research brief.'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research Agent: Completed research brief.'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
 
     # Yield writer start
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': 'Writing Agent (SIMULATED): Drafting blog post using research brief...'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': 'Writing Agent (SIMULATED): Drafting blog post using research brief...'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
 
     writer_text = f"""# The Rise of {topic}: Unlocking Opportunities and Navigating Challenges
@@ -136,14 +149,17 @@ Ultimately, `{topic}` is set to redefine how we operate. By focusing on the bene
 
     for i in range(0, len(writer_text), chunk_size):
         chunk = writer_text[i:i+chunk_size]
-        yield f"data: {json.dumps({'event': 'content', 'agent': 'writer', 'text': chunk})}\n\n"
+        yield sse_message({'event': 'content', 'agent': 'writer', 'text': chunk})
+        await asyncio.sleep(0)
         await asyncio.sleep(0.04)
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing Agent: Completed first draft.'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing Agent: Completed first draft.'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
 
     # Yield editor start
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': 'Editing Agent (SIMULATED): Polishing the blog post draft...'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': 'Editing Agent (SIMULATED): Polishing the blog post draft...'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
 
     editor_text = f"""# The Revolution of {topic}: How to Unlock Opportunities and Navigate Challenges
@@ -179,14 +195,17 @@ The shift toward **{topic}** represents a paradigm change. Organizations that ta
 
     for i in range(0, len(editor_text), chunk_size):
         chunk = editor_text[i:i+chunk_size]
-        yield f"data: {json.dumps({'event': 'content', 'agent': 'editor', 'text': chunk})}\n\n"
+        yield sse_message({'event': 'content', 'agent': 'editor', 'text': chunk})
+        await asyncio.sleep(0)
         await asyncio.sleep(0.04)
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing Agent: Completed final edit.'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing Agent: Completed final edit.'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
 
     # Yield SEO start
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': 'SEO Agent (SIMULATED): Generating SEO optimization report...'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': 'SEO Agent (SIMULATED): Generating SEO optimization report...'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
 
     seo_text = f"""# SEO Optimization Report: {topic}
@@ -211,12 +230,15 @@ The shift toward **{topic}** represents a paradigm change. Organizations that ta
 
     for i in range(0, len(seo_text), chunk_size):
         chunk = seo_text[i:i+chunk_size]
-        yield f"data: {json.dumps({'event': 'content', 'agent': 'seo', 'text': chunk})}\n\n"
+        yield sse_message({'event': 'content', 'agent': 'seo', 'text': chunk})
+        await asyncio.sleep(0)
         await asyncio.sleep(0.04)
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO Agent: Completed SEO report.'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO Agent: Completed SEO report.'})
+    await asyncio.sleep(0)
     await asyncio.sleep(0.5)
-    yield f"data: {json.dumps({'event': 'complete', 'message': 'All agents have completed their tasks (SIMULATED). Blog post and SEO report are ready!'})}\n\n"
+    yield sse_message({'event': 'complete', 'message': 'All agents have completed their tasks (SIMULATED). Blog post and SEO report are ready!'})
+    await asyncio.sleep(0)
 
 async def run_agent_pipeline(
     topic: str,
@@ -225,9 +247,17 @@ async def run_agent_pipeline(
     api_key: str,
     language: str = "English"
 ) -> AsyncGenerator[str, None]:
+    # FIX 4: Immediately yield connected event at the very top of run_agent_pipeline
+    yield sse_message({'event': 'connected', 'message': 'Pipeline connected'})
+    await asyncio.sleep(0)
+
+    # FIX 3: Keepalive heartbeat tracking
+    last_ping = asyncio.get_event_loop().time()
+
     if api_key == "mock":
         async for event in run_mock_pipeline(topic, tone, length):
             yield event
+            await asyncio.sleep(0)
         return
 
     try:
@@ -235,8 +265,15 @@ async def run_agent_pipeline(
         # Use gemini-3.6-flash as default model
         model_name = "gemini-3.6-flash"
     except Exception as e:
-        yield f"data: {json.dumps({'event': 'error', 'message': f'Failed to initialize Gemini Client: {str(e)}'})}\n\n"
+        yield sse_message({'event': 'error', 'message': f'Failed to initialize Gemini Client: {str(e)}'})
+        await asyncio.sleep(0)
         return
+
+    # Heartbeat check before first agent
+    if asyncio.get_event_loop().time() - last_ping >= 15:
+        last_ping = asyncio.get_event_loop().time()
+        yield ": ping\n\n"
+        await asyncio.sleep(0)
 
     research_output = ""
     for attempt in range(4):
@@ -256,26 +293,45 @@ async def run_agent_pipeline(
             for chunk in response_stream:
                 text = chunk.text or ""
                 research_output += text
-                yield f"data: {json.dumps({'event': 'content', 'agent': 'research', 'text': text})}\n\n"
-                await asyncio.sleep(0.01) # Small sleep to yield execution and simulate real-time stream
+                yield sse_message({'event': 'content', 'agent': 'research', 'text': text})
+                await asyncio.sleep(0)
+                if asyncio.get_event_loop().time() - last_ping >= 15:
+                    last_ping = asyncio.get_event_loop().time()
+                    yield ": ping\n\n"
+                    await asyncio.sleep(0)
             break
         except Exception as e:
             is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
             if is_quota and attempt < 3:
-                yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'start', 'message': f'Research Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
+                yield sse_message({'event': 'status', 'agent': 'research', 'status': 'start', 'message': f'Research Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})
+                await asyncio.sleep(0)
                 research_output = ""
-                await asyncio.sleep(12.0)
+                for _ in range(12):
+                    await asyncio.sleep(1.0)
+                    if asyncio.get_event_loop().time() - last_ping >= 15:
+                        last_ping = asyncio.get_event_loop().time()
+                        yield ": ping\n\n"
+                        await asyncio.sleep(0)
             else:
-                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Research: {str(e)}'})}\n\n"
+                yield sse_message({'event': 'error', 'message': f'Error during Research: {str(e)}'})
+                await asyncio.sleep(0)
                 return
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research Agent: Completed research phase!'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research Agent: Completed research phase!'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
+
+    # Heartbeat check
+    if asyncio.get_event_loop().time() - last_ping >= 15:
+        last_ping = asyncio.get_event_loop().time()
+        yield ": ping\n\n"
+        await asyncio.sleep(0)
 
     # ==========================================
     # 2. WRITING AGENT
     # ==========================================
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': 'Writing Agent: Creating the first draft based on research findings...'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': 'Writing Agent: Creating the first draft based on research findings...'})
+    await asyncio.sleep(0)
     await asyncio.sleep(0.5)
 
     draft_output = ""
@@ -296,26 +352,45 @@ async def run_agent_pipeline(
             for chunk in response_stream:
                 text = chunk.text or ""
                 draft_output += text
-                yield f"data: {json.dumps({'event': 'content', 'agent': 'writer', 'text': text})}\n\n"
-                await asyncio.sleep(0.01)
+                yield sse_message({'event': 'content', 'agent': 'writer', 'text': text})
+                await asyncio.sleep(0)
+                if asyncio.get_event_loop().time() - last_ping >= 15:
+                    last_ping = asyncio.get_event_loop().time()
+                    yield ": ping\n\n"
+                    await asyncio.sleep(0)
             break
         except Exception as e:
             is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
             if is_quota and attempt < 3:
-                yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': f'Writing Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
+                yield sse_message({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': f'Writing Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})
+                await asyncio.sleep(0)
                 draft_output = ""
-                await asyncio.sleep(12.0)
+                for _ in range(12):
+                    await asyncio.sleep(1.0)
+                    if asyncio.get_event_loop().time() - last_ping >= 15:
+                        last_ping = asyncio.get_event_loop().time()
+                        yield ": ping\n\n"
+                        await asyncio.sleep(0)
             else:
-                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Writing: {str(e)}'})}\n\n"
+                yield sse_message({'event': 'error', 'message': f'Error during Writing: {str(e)}'})
+                await asyncio.sleep(0)
                 return
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing Agent: Completed first draft!'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing Agent: Completed first draft!'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
+
+    # Heartbeat check
+    if asyncio.get_event_loop().time() - last_ping >= 15:
+        last_ping = asyncio.get_event_loop().time()
+        yield ": ping\n\n"
+        await asyncio.sleep(0)
 
     # ==========================================
     # 3. EDITING AGENT
     # ==========================================
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': 'Editing Agent: Polishing the draft for flow, tone, and grammar...'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': 'Editing Agent: Polishing the draft for flow, tone, and grammar...'})
+    await asyncio.sleep(0)
     await asyncio.sleep(0.5)
 
     final_output = ""
@@ -335,26 +410,45 @@ async def run_agent_pipeline(
             for chunk in response_stream:
                 text = chunk.text or ""
                 final_output += text
-                yield f"data: {json.dumps({'event': 'content', 'agent': 'editor', 'text': text})}\n\n"
-                await asyncio.sleep(0.01)
+                yield sse_message({'event': 'content', 'agent': 'editor', 'text': text})
+                await asyncio.sleep(0)
+                if asyncio.get_event_loop().time() - last_ping >= 15:
+                    last_ping = asyncio.get_event_loop().time()
+                    yield ": ping\n\n"
+                    await asyncio.sleep(0)
             break
         except Exception as e:
             is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
             if is_quota and attempt < 3:
-                yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': f'Editing Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
+                yield sse_message({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': f'Editing Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})
+                await asyncio.sleep(0)
                 final_output = ""
-                await asyncio.sleep(12.0)
+                for _ in range(12):
+                    await asyncio.sleep(1.0)
+                    if asyncio.get_event_loop().time() - last_ping >= 15:
+                        last_ping = asyncio.get_event_loop().time()
+                        yield ": ping\n\n"
+                        await asyncio.sleep(0)
             else:
-                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during Editing: {str(e)}'})}\n\n"
+                yield sse_message({'event': 'error', 'message': f'Error during Editing: {str(e)}'})
+                await asyncio.sleep(0)
                 return
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing Agent: Completed final edit!'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing Agent: Completed final edit!'})
+    await asyncio.sleep(0)
     await asyncio.sleep(1.0)
+
+    # Heartbeat check
+    if asyncio.get_event_loop().time() - last_ping >= 15:
+        last_ping = asyncio.get_event_loop().time()
+        yield ": ping\n\n"
+        await asyncio.sleep(0)
 
     # ==========================================
     # 4. SEO AGENT
     # ==========================================
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': 'SEO Agent: Generating SEO report and optimization tips...'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': 'SEO Agent: Generating SEO report and optimization tips...'})
+    await asyncio.sleep(0)
     await asyncio.sleep(0.5)
 
     for attempt in range(4):
@@ -371,21 +465,35 @@ async def run_agent_pipeline(
 
             for chunk in response_stream:
                 text = chunk.text or ""
-                yield f"data: {json.dumps({'event': 'content', 'agent': 'seo', 'text': text})}\n\n"
-                await asyncio.sleep(0.01)
+                yield sse_message({'event': 'content', 'agent': 'seo', 'text': text})
+                await asyncio.sleep(0)
+                if asyncio.get_event_loop().time() - last_ping >= 15:
+                    last_ping = asyncio.get_event_loop().time()
+                    yield ": ping\n\n"
+                    await asyncio.sleep(0)
             break
         except Exception as e:
             is_quota = "quota" in str(e).lower() or "limit" in str(e).lower() or "exhausted" in str(e).lower() or "429" in str(e)
             if is_quota and attempt < 3:
-                yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': f'SEO Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})}\n\n"
-                await asyncio.sleep(12.0)
+                yield sse_message({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': f'SEO Agent: Rate limit hit. Waiting 12 seconds to retry (attempt {attempt+1}/4)...'})
+                await asyncio.sleep(0)
+                for _ in range(12):
+                    await asyncio.sleep(1.0)
+                    if asyncio.get_event_loop().time() - last_ping >= 15:
+                        last_ping = asyncio.get_event_loop().time()
+                        yield ": ping\n\n"
+                        await asyncio.sleep(0)
             else:
-                yield f"data: {json.dumps({'event': 'error', 'message': f'Error during SEO analysis: {str(e)}'})}\n\n"
+                yield sse_message({'event': 'error', 'message': f'Error during SEO analysis: {str(e)}'})
+                await asyncio.sleep(0)
                 return
 
-    yield f"data: {json.dumps({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO Agent: Completed SEO report!'})}\n\n"
+    yield sse_message({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO Agent: Completed SEO report!'})
+    await asyncio.sleep(0)
     await asyncio.sleep(0.5)
-    yield f"data: {json.dumps({'event': 'complete', 'message': 'All agents have completed their tasks. Blog post and SEO report are ready!'})}\n\n"
+
+    yield sse_message({'event': 'complete', 'message': 'All agents have completed their tasks. Blog post and SEO report are ready!'})
+    await asyncio.sleep(0)
 
 
 @app.get("/api/generate")
@@ -397,18 +505,32 @@ async def generate_blog_post(
     x_api_key: str = Header(None),
     api_key: str = Query(None)
 ):
+    headers = {
+        'X-Accel-Buffering': 'no',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+    }
+
     # Validate API Key
     try:
         validated_api_key = get_api_key(x_api_key, api_key)
     except HTTPException as e:
         # Return a stream that immediately yields an error if credentials are missing
         async def error_generator():
-            yield f"data: {json.dumps({'event': 'error', 'message': e.detail})}\n\n"
-        return StreamingResponse(error_generator(), media_type="text/event-stream")
+            yield sse_message({'event': 'error', 'message': e.detail})
+            await asyncio.sleep(0)
+        return StreamingResponse(error_generator(), media_type="text/event-stream", headers=headers)
+
+    async def event_generator():
+        async for chunk in run_agent_pipeline(topic, tone, length, validated_api_key, language):
+            yield chunk
+            await asyncio.sleep(0)
 
     return StreamingResponse(
-        run_agent_pipeline(topic, tone, length, validated_api_key, language),
-        media_type="text/event-stream"
+        event_generator(),
+        media_type='text/event-stream',
+        headers=headers
     )
 
 if __name__ == "__main__":
