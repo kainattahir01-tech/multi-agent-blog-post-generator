@@ -466,7 +466,6 @@ async def run_agent_pipeline(
                         temperature=0.3
                     )
                 )
-            )
 
                 for chunk in response_stream:
                     text = chunk.text or ""
