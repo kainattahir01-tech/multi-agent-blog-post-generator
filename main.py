@@ -1,8 +1,10 @@
 import os
 import json
 import asyncio
+import uuid
+import threading
 from typing import AsyncGenerator
-from fastapi import FastAPI, Header, Query, HTTPException, status
+from fastapi import FastAPI, Header, Query, HTTPException, status, Request
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -12,6 +14,9 @@ from google.genai.errors import APIError
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# In-memory storage for background polling jobs
+jobs = {}
 
 app = FastAPI(
     title="Multi-Agent Blog Post Generator",
@@ -539,6 +544,234 @@ async def generate_blog_post(
         media_type='text/event-stream',
         headers=headers
     )
+
+def run_sync_pipeline(job_id: str, topic: str, tone: str, length: str, api_key: str, language: str = "English"):
+    import time
+    try:
+        if api_key == "mock":
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'research', 'status': 'start', 'message': 'Research Agent starting...'})
+            time.sleep(1.0)
+            mock_research = f"""# Research Brief: {topic}
+
+## 1. Background & Overview
+* **Core Concept**: Comprehensive synthesis of fundamental principles for {topic}.
+* **Key Statistics**: 45% annual growth rate and broad-based adoption across sectors.
+* **Strategic Drivers**: Increased productivity and automation of complex workflows."""
+            jobs[job_id]['events'].append({'event': 'content', 'agent': 'research', 'text': mock_research})
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research complete'})
+
+            time.sleep(1.0)
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': 'Writing Agent starting...'})
+            time.sleep(1.0)
+            mock_draft = f"""# The Rise of {topic}: Trends, Strategy, and Implementation
+
+In our rapidly transforming technical ecosystem, **{topic}** represents an essential cornerstone for sustainable innovation and efficiency.
+
+## Key Advantages
+1. **Exponential Speed**: Automates manual processes to reduce delivery cycles by up to 3x.
+2. **Resource Efficiency**: Lowers operational overhead while maintaining quality standards."""
+            jobs[job_id]['events'].append({'event': 'content', 'agent': 'writer', 'text': mock_draft})
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing complete'})
+
+            time.sleep(1.0)
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': 'Editing Agent starting...'})
+            time.sleep(1.0)
+            mock_editor = f"""# Unlocking the Full Potential of {topic}: An Executive Guide
+
+In today's fast-moving competitive environment, **{topic}** has transitioned from an emerging experimental tool into a mission-critical business asset.
+
+---
+
+## 1. The Strategic Imperative
+Organizations prioritizing {topic} consistently outpace conventional methods by removing administrative friction and accelerating execution.
+
+## 2. Core Operational Pillars
+* **Structured Governance**: Establish robust validation and oversight pipelines.
+* **Iterative Scaling**: Deploy incrementally to validate performance milestones early.
+
+---
+
+## Conclusion
+Adopting {topic} with a clear, systematic strategy equips modern organizations for sustained long-term leadership."""
+            jobs[job_id]['events'].append({'event': 'content', 'agent': 'editor', 'text': mock_editor})
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing complete'})
+
+            time.sleep(1.0)
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': 'SEO Agent starting...'})
+            time.sleep(1.0)
+            mock_seo = f"""# SEO Optimization Report for: {topic}
+
+## Focus Keywords
+* `{topic}`
+* `{topic} tutorial`
+* `{topic} best practices`
+* `how to implement {topic}`
+* `{topic} architecture`
+
+## Meta Description
+Discover key trends, proven benefits, and actionable deployment strategies for {topic} in this in-depth guide.
+
+## SEO Title Recommendations
+1. The Ultimate Guide to {topic} | Practical Insights
+2. Accelerating Transformation with {topic}
+3. Mastering {topic}: Key Trends & Strategy
+
+## Content Health & Readability
+* **Readability Score**: 8.8 / 10 (Flesch Reading Ease: Optimal for professionals).
+* **Keyword Density**: 1.6% (Natural, authoritative placement)."""
+            jobs[job_id]['events'].append({'event': 'content', 'agent': 'seo', 'text': mock_seo})
+            jobs[job_id]['events'].append({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO complete'})
+
+            jobs[job_id]['events'].append({'event': 'complete', 'message': 'All agents done'})
+            jobs[job_id]['done'] = True
+            jobs[job_id]['status'] = 'completed'
+            return
+
+        client = genai.Client(api_key=api_key)
+        model_name = "gemini-3.6-flash"
+
+        # 1. Research Agent
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'research', 'status': 'start', 'message': 'Research Agent starting...'})
+        research_prompt = f"Conduct comprehensive research and compile key facts, statistics, and subtopics for the topic: '{topic}'."
+        research_resp = client.models.generate_content(
+            model=model_name,
+            contents=research_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=RESEARCH_AGENT_INSTRUCTIONS,
+                temperature=0.4
+            )
+        )
+        research_result = research_resp.text or ""
+        jobs[job_id]['events'].append({'event': 'content', 'agent': 'research', 'text': research_result})
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'research', 'status': 'done', 'message': 'Research complete'})
+
+        # 2. Writing Agent
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'writer', 'status': 'start', 'message': 'Writing Agent starting...'})
+        writer_prompt = f"Here is the research brief:\n\n{research_result}\n\nWrite the first draft of the blog post now."
+        writer_instruction = WRITING_AGENT_INSTRUCTIONS.format(tone=tone, length=length, topic=topic, language=language)
+        writer_resp = client.models.generate_content(
+            model=model_name,
+            contents=writer_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=writer_instruction,
+                temperature=0.7
+            )
+        )
+        writer_result = writer_resp.text or ""
+        jobs[job_id]['events'].append({'event': 'content', 'agent': 'writer', 'text': writer_result})
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'writer', 'status': 'done', 'message': 'Writing complete'})
+
+        # 3. Editing Agent
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'editor', 'status': 'start', 'message': 'Editing Agent starting...'})
+        editor_prompt = f"Please edit and polish the following draft. Correct any structural errors, improve readability, and ensure headings flow logically:\n\n{writer_result}"
+        editor_resp = client.models.generate_content(
+            model=model_name,
+            contents=editor_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=EDITING_AGENT_INSTRUCTIONS,
+                temperature=0.3
+            )
+        )
+        editor_result = editor_resp.text or ""
+        jobs[job_id]['events'].append({'event': 'content', 'agent': 'editor', 'text': editor_result})
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'editor', 'status': 'done', 'message': 'Editing complete'})
+
+        # 4. SEO Agent
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'seo', 'status': 'start', 'message': 'SEO Agent starting...'})
+        seo_prompt = f"Here is the final polished blog post:\n\n{editor_result}\n\nPlease generate a comprehensive SEO optimization report for it."
+        seo_resp = client.models.generate_content(
+            model=model_name,
+            contents=seo_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SEO_AGENT_INSTRUCTIONS,
+                temperature=0.3
+            )
+        )
+        seo_result = seo_resp.text or ""
+        jobs[job_id]['events'].append({'event': 'content', 'agent': 'seo', 'text': seo_result})
+        jobs[job_id]['events'].append({'event': 'status', 'agent': 'seo', 'status': 'done', 'message': 'SEO complete'})
+
+        jobs[job_id]['events'].append({'event': 'complete', 'message': 'All agents done'})
+        jobs[job_id]['done'] = True
+        jobs[job_id]['status'] = 'completed'
+
+    except Exception as e:
+        jobs[job_id]['events'].append({'event': 'error', 'message': str(e)})
+        jobs[job_id]['done'] = True
+        jobs[job_id]['status'] = 'error'
+
+
+@app.post("/api/start")
+async def start_job(
+    request: Request,
+    topic: str = Query(None),
+    tone: str = Query("professional"),
+    length: str = Query("medium"),
+    language: str = Query("English"),
+    api_key: str = Query(None),
+    x_api_key: str = Header(None)
+):
+    # Support query params, form data, or JSON body
+    req_data = {}
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            req_data = await request.json()
+        except Exception:
+            pass
+    elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+            req_data = dict(form)
+        except Exception:
+            pass
+
+    actual_topic = topic or req_data.get("topic")
+    actual_tone = tone or req_data.get("tone", "professional")
+    actual_length = length or req_data.get("length", "medium")
+    actual_language = language or req_data.get("language", "English")
+    actual_api_key = api_key or req_data.get("api_key")
+
+    if not actual_topic:
+        raise HTTPException(status_code=400, detail="Topic is required")
+
+    validated_api_key = get_api_key(x_api_key, actual_api_key)
+
+    job_id = uuid.uuid4().hex
+    jobs[job_id] = {
+        'status': 'running',
+        'events': [],
+        'done': False
+    }
+
+    thread = threading.Thread(
+        target=run_sync_pipeline,
+        args=(job_id, actual_topic, actual_tone, actual_length, validated_api_key, actual_language),
+        daemon=True
+    )
+    thread.start()
+
+    return {"job_id": job_id}
+
+
+@app.get("/api/poll/{job_id}")
+async def poll_job(job_id: str, cursor: int = Query(0)):
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = jobs[job_id]
+    all_events = job.get('events', [])
+    new_events = all_events[cursor:]
+    new_cursor = len(all_events)
+    done = job.get('done', False)
+
+    return {
+        'job_id': job_id,
+        'events': new_events,
+        'cursor': new_cursor,
+        'done': done,
+        'status': job.get('status', 'running')
+    }
 
 if __name__ == '__main__':
     import uvicorn

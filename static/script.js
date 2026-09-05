@@ -38,6 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // State Variables
     let eventSource = null;
+    let pollInterval = null;
+    let currentJobId = null;
+    let pollCursor = 0;
     let researchText = "";
     let writerText = "";
     let editorText = "";
@@ -246,9 +249,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
-        if (window.currentReader) {
-            window.currentReader.cancel();
-            window.currentReader = null;
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            currentJobId = null;
             resetButtonState();
             log('Pipeline terminated.');
             return;
@@ -262,9 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const tone = toneSelect.value;
         const length = lengthSelect.value;
         const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
-
-        let url = '/api/generate?topic=' + encodeURIComponent(topic) + '&tone=' + encodeURIComponent(tone) + '&length=' + encodeURIComponent(length);
-        if (apiKey) url += '&api_key=' + encodeURIComponent(apiKey);
 
         generateBtn.innerHTML = '<span>Terminate Pipeline</span>';
         generateBtn.classList.add('running');
@@ -288,45 +289,74 @@ document.addEventListener('DOMContentLoaded', () => {
         editorOutput.innerHTML = '<div class="empty-state"><p>Waiting...</p></div>';
         if (seoOutput) seoOutput.innerHTML = '<div class="empty-state"><p>Waiting...</p></div>';
 
-        log('Connecting to pipeline...');
+        log('Starting agent pipeline job...');
 
         try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('Server error: ' + response.status);
+            const formData = new URLSearchParams();
+            formData.append('topic', topic);
+            formData.append('tone', tone);
+            formData.append('length', length);
+            if (apiKey) formData.append('api_key', apiKey);
+
+            const startResp = await fetch('/api/start?' + formData.toString(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: formData.toString()
+            });
+
+            if (!startResp.ok) {
+                const errData = await startResp.json().catch(() => ({}));
+                throw new Error(errData.detail || 'Server error: ' + startResp.status);
             }
-            if (!response.body) {
-                throw new Error('Streaming not supported');
-            }
 
-            const reader = response.body.getReader();
-            window.currentReader = reader;
-            const decoder = new TextDecoder();
-            let buffer = '';
+            const startData = await startResp.json();
+            currentJobId = startData.job_id;
+            pollCursor = 0;
+            log('Job started. Polling for agent progress...');
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+            pollInterval = setInterval(async () => {
+                if (!currentJobId) {
+                    if (pollInterval) clearInterval(pollInterval);
+                    pollInterval = null;
+                    return;
+                }
 
-                buffer += decoder.decode(value, { stream: true });
+                try {
+                    const pollResp = await fetch(`/api/poll/${currentJobId}?cursor=${pollCursor}`);
+                    if (!pollResp.ok) {
+                        throw new Error('Poll failed: ' + pollResp.status);
+                    }
 
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            if (data.event === 'status') handleStatusEvent(data);
-                            else if (data.event === 'content') handleContentEvent(data);
-                            else if (data.event === 'complete') handleCompleteEvent(data);
-                            else if (data.event === 'error') handleErrorEvent(data);
-                        } catch(err) {
-                            console.error('Parse error:', err, line);
+                    const pollData = await pollResp.json();
+                    if (pollData.events && pollData.events.length > 0) {
+                        for (const event of pollData.events) {
+                            if (event.event === 'status') handleStatusEvent(event);
+                            else if (event.event === 'content') handleContentEvent(event);
+                            else if (event.event === 'complete') handleCompleteEvent(event);
+                            else if (event.event === 'error') handleErrorEvent(event);
                         }
                     }
+
+                    pollCursor = pollData.cursor;
+
+                    if (pollData.done) {
+                        if (pollInterval) clearInterval(pollInterval);
+                        pollInterval = null;
+                        currentJobId = null;
+                        resetButtonState();
+                    }
+                } catch (pollErr) {
+                    console.error('Polling error:', pollErr);
+                    log('Polling error: ' + pollErr.message, true);
+                    if (pollInterval) clearInterval(pollInterval);
+                    pollInterval = null;
+                    currentJobId = null;
+                    resetButtonState();
                 }
-            }
+            }, 2000);
+
         } catch (err) {
             console.error('Fetch error:', err);
             log('Error: ' + err.message, true);
@@ -433,6 +463,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resetButtonState() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+        currentJobId = null;
         window.currentReader = null;
         document.body.classList.remove('generating');
         generateBtn.classList.remove('running');
