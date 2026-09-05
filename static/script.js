@@ -244,67 +244,94 @@ document.addEventListener('DOMContentLoaded', () => {
         isFetchingFallback = false;
     }
 
-    form.addEventListener('submit', function(e) {
+    form.addEventListener('submit', async function(e) {
         e.preventDefault();
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
+        if (window.currentReader) {
+            window.currentReader.cancel();
+            window.currentReader = null;
             resetButtonState();
+            log('Pipeline terminated.');
             return;
         }
+
         const topic = topicInput.value.trim();
         if (!topic) {
-            alert('Please enter a blog topic');
+            alert('Please enter a topic');
             return;
         }
         const tone = toneSelect.value;
         const length = lengthSelect.value;
         const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+
         let url = '/api/generate?topic=' + encodeURIComponent(topic) + '&tone=' + encodeURIComponent(tone) + '&length=' + encodeURIComponent(length);
-        if (apiKey) {
-            url += '&api_key=' + encodeURIComponent(apiKey);
-        }
+        if (apiKey) url += '&api_key=' + encodeURIComponent(apiKey);
+
         generateBtn.innerHTML = '<span>Terminate Pipeline</span>';
         generateBtn.classList.add('running');
         document.body.classList.add('generating');
+        researchText = '';
+        writerText = '';
+        editorText = '';
+        seoText = '';
 
-        // Reset text buffers and UI steps
-        researchText = "";
-        writerText = "";
-        editorText = "";
-        seoText = "";
         startStatsTimer();
+        document.getElementById('info-word-count').textContent = '0';
+        document.getElementById('info-reading-time').textContent = '0 min';
+
         updateStepUI(stepResearch, 'idle');
         updateStepUI(stepWriter, 'idle');
         updateStepUI(stepEditor, 'idle');
         updateStepUI(stepSeo, 'idle');
-        document.getElementById('info-word-count').textContent = '0';
-        document.getElementById('info-reading-time').textContent = '0 min';
 
-        eventSource = new EventSource(url);
-        eventSource.onmessage = function(event) {
-            console.log('SSE message received:', event.data);
-            try {
-                const data = JSON.parse(event.data);
-                if (data.event === 'status') handleStatusEvent(data);
-                else if (data.event === 'content') handleContentEvent(data);
-                else if (data.event === 'complete') handleCompleteEvent(data);
-                else if (data.event === 'error') handleErrorEvent(data);
-            } catch(err) {
-                console.error('Parse error:', err);
+        researchOutput.innerHTML = '<div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Waiting for Research Agent...</p></div>';
+        writerOutput.innerHTML = '<div class="empty-state"><p>Waiting...</p></div>';
+        editorOutput.innerHTML = '<div class="empty-state"><p>Waiting...</p></div>';
+        if (seoOutput) seoOutput.innerHTML = '<div class="empty-state"><p>Waiting...</p></div>';
+
+        log('Connecting to pipeline...');
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('Server error: ' + response.status);
             }
-        };
-        eventSource.onerror = function(err) {
-            console.error('SSE error details:', err, 'readyState:', eventSource.readyState);
-            if (eventSource.readyState === EventSource.CLOSED) {
-                log('Connection closed by server. Check that your API key is valid.', true);
-            } else {
-                log('Connection error — retrying...', true);
+            if (!response.body) {
+                throw new Error('Streaming not supported');
             }
-            eventSource.close();
-            eventSource = null;
+
+            const reader = response.body.getReader();
+            window.currentReader = reader;
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.event === 'status') handleStatusEvent(data);
+                            else if (data.event === 'content') handleContentEvent(data);
+                            else if (data.event === 'complete') handleCompleteEvent(data);
+                            else if (data.event === 'error') handleErrorEvent(data);
+                        } catch(err) {
+                            console.error('Parse error:', err, line);
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Fetch error:', err);
+            log('Error: ' + err.message, true);
             resetButtonState();
-        };
+        }
     });
 
     function handleStatusEvent(data) {
@@ -406,9 +433,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resetButtonState() {
+        window.currentReader = null;
         document.body.classList.remove('generating');
         generateBtn.classList.remove('running');
-        generateBtn.innerHTML = `<span><i class="fa-solid fa-rocket"></i> Launch Pipeline</span>`;
+        generateBtn.innerHTML = '<span><i class="fa-solid fa-rocket"></i> Launch Agent Pipeline</span>';
         
         if (topProgressBar) {
             topProgressBar.classList.remove('loading');
